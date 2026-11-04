@@ -1,0 +1,33 @@
+name: Verify public website
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check frontend and configured API from an external server
+        shell: python
+        run: |
+          import json, urllib.request, time
+          base='https://shaoranhu.github.io/lab-safety-demo/'
+          def get(url):
+              with urllib.request.urlopen(url,timeout=40) as r:
+                  assert r.status==200
+                  return r.read()
+          page=get(base).decode()
+          assert 'LabGuard' in page
+          assert len(get(base+'app.js'))>3000
+          assert len(get(base+'style.css'))>1000
+          config=json.loads(get(base+'config.json?t='+str(int(time.time()))))
+          api=config['apiBase']
+          assert api.startswith('https://')
+          health=json.loads(get(api+'/api/health'))
+          assert health['status']=='ok'
+          print('PASS: public frontend and backend health accessible from GitHub-hosted runner')
+          print('Frontend: '+base)
+          print('Backend: '+api)
+          with open(__import__('os').environ['GITHUB_STEP_SUMMARY'],'a') as f:
+              f.write('Public frontend and backend health returned HTTP 200 from an external runner.\n')
