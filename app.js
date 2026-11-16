@@ -145,24 +145,47 @@ const logRanges=[
   {date:$('#end'),hour:$('#end-hour'),minute:$('#end-minute'),label:'结束时间',lastMinute:true}
 ];
 for(const range of logRanges){
-  for(const [select,count] of [[range.hour,24],[range.minute,60]]){
+  for(const [select,count,unit] of [[range.hour,24,'时'],[range.minute,60,'分']]){
     for(let i=0;i<count;i++){
       const value=String(i).padStart(2,'0');
-      select.add(new Option(value,value,i===0 || (range.lastMinute && i===count-1)));
+      select.add(new Option(value+' '+unit,value,i===0 || (range.lastMinute && i===count-1)));
     }
     select.selectedIndex=range.lastMinute?count-1:0;
   }
-  const syncTime=()=>{range.hour.disabled=range.minute.disabled=!range.date.value};
-  range.date.addEventListener('input',syncTime);
-  range.date.addEventListener('change',syncTime);
-  syncTime();
+  const display=range.date.parentElement.querySelector('.log-date-value');
+  range.sync=()=>{
+    const value=range.date.value;
+    range.hour.disabled=range.minute.disabled=!value;
+    if(display){
+      const [year,month,day]=value.split('-');
+      display.textContent=value?year+'年'+month+'月'+day+'日':'选择日期';
+      display.classList.toggle('empty',!value);
+    }
+  };
+  if(display){
+    const openPicker=event=>{
+      try{
+        range.date.showPicker();
+        event.preventDefault();
+      }catch{
+        // Keep the browser's own picker action when showPicker is unavailable.
+      }
+    };
+    range.date.addEventListener('click',openPicker);
+    range.date.addEventListener('keydown',event=>{
+      if(event.key===' '||event.key==='Enter')openPicker(event);
+    });
+  }
+  range.date.addEventListener('input',range.sync);
+  range.date.addEventListener('change',range.sync);
+  range.sync();
 }
 $('#clear-log-range').onclick=()=>{
   for(const range of logRanges){
     range.date.value='';
     range.hour.selectedIndex=range.lastMinute?23:0;
     range.minute.selectedIndex=range.lastMinute?59:0;
-    range.hour.disabled=range.minute.disabled=true;
+    range.sync();
   }
   $('#logs-dialog .toast-inline')?.remove();
 };

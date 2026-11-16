@@ -5,10 +5,17 @@
 @media(max-width:600px){nav{gap:6px;width:100%}nav button{font-size:11px;padding:6px 8px}#connection{width:100%;font-size:11px}#account{max-width:180px}main{padding:10px}.video-grid{grid-template-columns:1fr;gap:10px}aside{display:flex;flex-direction:column}.snapshot-panel{height:300px}.result-panel{height:360px}.source-settings,.parameter-grid{grid-template-columns:1fr}dialog{padding:18px}.table-wrap{width:100%}.dashboard{gap:12px}#source-summary{font-size:11px}}
 
 .requested-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 20px;margin:12px 0 20px}.requested-grid .check small{color:#e1bd80}.test-heading{margin-top:16px;margin-bottom:8px}@media(max-width:600px){.requested-grid{grid-template-columns:1fr}}
-.log-range{display:grid;grid-template-columns:minmax(0,1fr) 67px 67px;gap:10px}
+.log-range{display:grid;grid-template-columns:minmax(0,1fr) 75px 75px;gap:10px}
 .log-range label{min-width:0;margin:3px 0 6px}
-.log-range input,.log-range select{min-width:0;padding-inline:7px}
-.log-range input::-webkit-calendar-picker-indicator{cursor:pointer}
+.log-range select{min-width:0;padding-inline:7px}
+.log-date{display:block;position:relative;margin-top:6px}
+.log-date input{position:absolute;inset:0;z-index:1;height:100%;margin:0;opacity:0;cursor:pointer}
+.log-date input::-webkit-calendar-picker-indicator{position:absolute;inset:0;width:auto;height:auto;margin:0;cursor:pointer}
+.log-date-value{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;border:1px solid #3a4d61;border-radius:5px;background:#0c1520;color:#dce6ee;white-space:nowrap}
+.log-date-value.empty{color:#a9bacb}
+.log-date-value::after{content:"日历";color:var(--accent);font-size:12px}
+.log-date:hover .log-date-value{border-color:var(--accent)}
+.log-date:focus-within .log-date-value{outline:2px solid var(--accent);outline-offset:2px}
 .log-actions{display:flex;gap:8px;margin-top:16px}
 .log-actions .primary{flex:1}
-@media(max-width:380px){.log-range{grid-template-columns:1fr 1fr}.log-range label:first-of-type{grid-column:1/-1}}
+@media(max-width:420px){.log-range{grid-template-columns:1fr 1fr}.log-range label:first-of-type{grid-column:1/-1}}
