@@ -1,8 +1,8 @@
 <!doctype html>
 <html lang="zh-CN">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LabGuard · 实验室行为识别</title><link rel="stylesheet" href="./style.css?v=20261117-controls"></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LabGuard · 实验室行为识别</title><link rel="stylesheet" href="./style.css?v=20261117-usage"></head>
 <body>
-<header><a class="brand" href="./">实验室行为识别</a><nav aria-label="工作台操作"><span id="connection" role="status">正在检查服务</span><button class="secondary" data-open="sources-dialog">视频来源</button><button class="secondary" data-open="settings-dialog">检测设置</button><button class="secondary" data-open="logs-dialog">日志导出</button><button class="secondary" data-open="service-dialog">服务连接</button><button id="account" class="primary">注册 / 登录</button></nav></header>
+<header><a class="brand" href="./">实验室行为识别</a><nav aria-label="工作台操作"><span id="connection" role="status">正在检查服务</span><button class="secondary" data-open="sources-dialog">视频来源</button><button class="secondary" data-open="settings-dialog">检测设置</button><button class="secondary" data-open="logs-dialog">日志导出</button><button class="secondary" data-open="usage-dialog">使用说明</button><button class="secondary" data-open="service-dialog">服务连接</button><button id="account" class="primary">注册 / 登录</button></nav></header>
 <main><div id="banner" role="status" class="banner" hidden></div><div class="dashboard">
 <section class="monitor-area" aria-label="实时视频"><div class="section-title"><h1>实时视频</h1><div class="video-toolbar"><span class="muted" id="source-summary">0 / 2 路运行中</span><button id="toggle-views" class="secondary" aria-pressed="false" disabled title="暂停或继续四路画面显示，后台保持识别">暂停画面</button></div></div><div id="videos" class="video-grid"></div></section>
 <aside>
@@ -11,7 +11,44 @@
 </aside>
 <section class="panel metrics-panel"><div class="section-title"><h2>运行状态</h2><span class="muted small">FPS 为后端处理帧率</span></div><div class="table-wrap"><table><thead><tr><th>视频来源</th><th>状态</th><th>人数</th><th>画面分辨率</th><th>处理 FPS</th><th>处理耗时</th><th>帧编号</th></tr></thead><tbody id="metrics"></tbody></table></div></section>
 </div></main>
-<dialog id="sources-dialog" class="wide-dialog" aria-labelledby="sources-title"><div class="dialog-head"><h2 id="sources-title">视频来源</h2><button data-close aria-label="关闭视频来源">关闭</button></div><p class="muted">上传 MP4 或选择 RTSP 来源。两路识别默认开启，可在主页分别启停。</p><div id="source-settings" class="source-settings"></div></dialog>
+<dialog id="sources-dialog" class="wide-dialog" aria-labelledby="sources-title">
+  <div class="dialog-head"><h2 id="sources-title">视频来源</h2><button data-close aria-label="关闭视频来源">关闭</button></div>
+  <p class="muted">上传 MP4 或选择预设的 RTSP 来源。两路识别默认开启，可在主页分别启停。</p>
+  <div id="source-limits" class="source-limits" hidden>
+    <p><strong>单个 MP4 最大 <span data-limit="upload_mb"></span> MB，按文件大小计算。</strong></p>
+    <p>所有账号共享 <span data-limit="storage_mb"></span> MB 视频存储及 <span data-limit="active_sources"></span> 路同时识别名额。可以多次更换视频。</p>
+  </div>
+  <div id="source-settings" class="source-settings"></div>
+</dialog>
+<dialog id="usage-dialog" aria-labelledby="usage-title">
+  <div class="dialog-head"><h2 id="usage-title">使用说明</h2><button data-close aria-label="关闭使用说明">关闭</button></div>
+  <p id="usage-status" class="muted" role="status">连接服务后可查看当前限额。</p>
+  <div id="usage-rules" class="usage-rules" hidden>
+    <section>
+      <h3>视频和识别</h3>
+      <ul>
+        <li>单个 MP4 最大 <strong><span data-limit="upload_mb"></span> MB</strong>，按文件大小计算。所有账号共享 <span data-limit="storage_mb"></span> MB 视频存储。清除当前来源后，已上传文件和历史告警仍会保留。</li>
+        <li>所有账号合计最多同时识别 <strong><span data-limit="active_sources"></span> 路</strong>。一路画面超过 <span data-limit="idle_minutes"></span> 分钟没有页面读取时，系统会自动停止该路识别。</li>
+        <li>上传的 MP4 会循环播放。RTSP 可选择管理员预设的来源。</li>
+      </ul>
+    </section>
+    <section>
+      <h3>账号和登录</h3>
+      <ul>
+        <li>当前服务最多注册 <strong><span data-limit="max_users"></span> 个账号</strong>。密码为 12–128 位，登录有效期为 <span data-limit="session_hours"></span> 小时。</li>
+        <li>同一网络入口每 <span data-limit="attempt_minutes"></span> 分钟，登录和注册各最多尝试 <span data-limit="attempt_count"></span> 次。</li>
+      </ul>
+    </section>
+    <section>
+      <h3>告警和导出</h3>
+      <ul>
+        <li>每个账号保留最近 <strong><span data-limit="stored_events"></span> 条告警</strong>。页面读取最近 <span data-limit="recent_events"></span> 条，每个结果页签最多显示 <span data-limit="events_per_tab"></span> 条，截图区域展示最新一张。</li>
+        <li>日志导出可以下载当前账号所有仍保留的告警，留空起止时间即可。</li>
+      </ul>
+    </section>
+  </div>
+  <p class="muted small">当前能识别的行为见「检测设置 → 已接入的检测项」。</p>
+</dialog>
 <dialog id="settings-dialog" class="wide-dialog" aria-labelledby="settings-title"><div class="dialog-head"><h2 id="settings-title">检测设置</h2><button data-close aria-label="关闭检测设置">关闭</button></div>
 <form id="settings-form">
 <fieldset id="behavior-parameters" disabled><legend>异常行为参数</legend><div class="parameter-grid">
@@ -51,4 +88,4 @@
 </dialog>
 <dialog id="service-dialog" aria-labelledby="service-title"><div class="dialog-head"><h2 id="service-title">服务连接</h2><button data-close aria-label="关闭服务连接">关闭</button></div><p class="muted small">当前后端在本地电脑运行，测试时需保持开机联网。</p><label>后端 HTTPS 地址<input id="api-url" placeholder="留空使用当前网站后端" autocomplete="off"></label><button id="connect" class="primary full">连接服务</button><button id="reset-connection" class="text-button full">恢复默认连接</button><p class="muted small">更换服务会退出当前账号。请仅连接可信地址。</p></dialog>
 <dialog id="auth" aria-labelledby="auth-title"><form id="auth-form"><div class="dialog-head"><h2 id="auth-title">登录工作台</h2><button type="button" id="close-auth" aria-label="关闭登录">关闭</button></div><label>邮箱<input id="email" type="email" required autocomplete="username" maxlength="254"></label><label>密码<input id="password" type="password" required minlength="12" maxlength="128" autocomplete="current-password" placeholder="至少 12 位"></label><p id="auth-error" class="error" role="alert"></p><button class="primary full" id="auth-submit">登录</button><button type="button" id="switch-auth" class="text-button full">还没有账号？注册</button></form></dialog>
-<div id="toast" role="status" hidden></div><script src="./motion.js?v=20261117-controls"></script><script src="./app.js?v=20261117-upload-fix"></script></body></html>
+<div id="toast" role="status" hidden></div><script src="./motion.js?v=20261117-controls"></script><script src="./app.js?v=20261117-usage"></script></body></html>

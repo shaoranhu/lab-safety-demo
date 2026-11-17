@@ -6,6 +6,8 @@ let savedSources={},recognitionEnabled={},viewsPaused=false,defaultApi='';
 let updates;
 let framePeriod=200,livePeriod=0;
 let resumeSavedSources=false;
+let serviceLimits=null;
+const eventsPerTab=15;
 const previewErrors={}, motions={}, localMedia={}, liveFrames={}, sourceChanges={}, statusPeriod=1500;
 const activeStates=['online','connecting'];
 const stateLabels={offline:'未连接',connecting:'正在读取',online:'在线',error:'错误',stopping:'正在停止',stopped:'已停止',disconnected:'连接中断'};
@@ -106,7 +108,7 @@ function drawCards(){
     controls.innerHTML=`<h3>${names[source]}</h3>
       <p class="current-source" id="source-current-${source}">当前未设置来源</p>
       <p class="source-notice" id="notice-${source}" role="status"></p>
-      <label>MP4 视频（最大 100 MB）<input id="file-${source}" type="file" accept="video/mp4,.mp4"></label>
+      <label>MP4 视频<input id="file-${source}" type="file" accept="video/mp4,.mp4" aria-describedby="source-limits"></label>
       <div class="button-row"><button id="upload-${source}" class="primary">上传视频</button>
       <button id="clear-${source}" class="secondary">清除当前来源</button></div>
       <label>RTSP 视频源<select id="rtsp-${source}"><option value="">尚未配置</option></select></label>
@@ -211,8 +213,9 @@ async function changeSource(source,pending,change){
 function uploadVideo(source){
   const file=$('#file-'+source).files[0];
   if(!file) return;
-  if(file.size>100*1024*1024){
-    sourceNotice(source,'视频不能超过 100 MB','error');
+  const maxMb=serviceLimits?.upload_mb;
+  if(Number.isFinite(maxMb)&&file.size>maxMb*1024*1024){
+    sourceNotice(source,'单个视频不能超过 '+maxMb+' MB','error');
     return;
   }
   return changeSource(source,'正在上传视频…',async(path,session)=>{
@@ -275,7 +278,7 @@ function eventList(){
   }
   const list=events.filter(e=>tab==='final'||e.source===tab);
   if(!list.length){const p=document.createElement('p');text(p,token?'暂无异常记录':'登录后查看识别结果');box.append(p);return}
-  for(const event of list.slice(0,15)){
+  for(const event of list.slice(0,eventsPerTab)){
     const row=document.createElement('div');row.className='event';
     const left=document.createElement('div'),right=document.createElement('div');right.className='event-type';
     left.textContent=names[event.source]+' · '+event.people+' 人';
@@ -481,12 +484,24 @@ async function loadAccount(){
   authState();startUpdates();
   for(const source of sources) restoreSource(source);
 }
+function showUsageLimits(limits){
+  serviceLimits=limits||null;
+  $('#usage-rules').hidden=$('#source-limits').hidden=!serviceLimits;
+  $('#usage-status').hidden=Boolean(serviceLimits);
+  if(!serviceLimits)return;
+  const values={...serviceLimits,events_per_tab:eventsPerTab};
+  document.querySelectorAll('[data-limit]').forEach(element=>{
+    text(element,values[element.dataset.limit]??'—');
+  });
+}
 async function health(){
+  showUsageLimits(null);
   try{
     const health=await json('/api/health');
     framePeriod=health.process_fps?Math.max(84,Math.min(200,1000/health.process_fps)):200;
     livePeriod=health.rtsp_preview_fps?1000/health.rtsp_preview_fps:0;
     resumeSavedSources=health.resume_saved_sources===true;
+    showUsageLimits(health.limits);
     $('#parameters').dataset.baseline=String(health.baseline_parameters!==false);
     text($('#connection'),'后端可连接');text($('#banner'),'');
     if(token)await loadAccount();
