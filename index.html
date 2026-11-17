@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LabGuard · 实验室行为识别</title><link rel="stylesheet" href="./style.css?v=20261117-usage"></head>
 <body>
-<header><a class="brand" href="./">实验室行为识别</a><nav aria-label="工作台操作"><span id="connection" role="status">正在检查服务</span><button class="secondary" data-open="sources-dialog">视频来源</button><button class="secondary" data-open="settings-dialog">检测设置</button><button class="secondary" data-open="logs-dialog">日志导出</button><button class="secondary" data-open="usage-dialog">使用说明</button><button class="secondary" data-open="service-dialog">服务连接</button><button id="account" class="primary">注册 / 登录</button></nav></header>
+<header><a class="brand" href="./">实验室行为识别</a><nav aria-label="工作台操作"><span id="connection" role="status">正在检查服务</span><button class="secondary" data-open="sources-dialog">视频来源</button><button class="secondary" data-open="settings-dialog">检测设置</button><button class="secondary" data-open="logs-dialog">日志导出</button><button class="secondary" data-open="usage-dialog" hidden>使用说明</button><button class="secondary" data-open="service-dialog">服务连接</button><button id="account" class="primary">注册 / 登录</button></nav></header>
 <main><div id="banner" role="status" class="banner" hidden></div><div class="dashboard">
 <section class="monitor-area" aria-label="实时视频"><div class="section-title"><h1>实时视频</h1><div class="video-toolbar"><span class="muted" id="source-summary">0 / 2 路运行中</span><button id="toggle-views" class="secondary" aria-pressed="false" disabled title="暂停或继续四路画面显示，后台保持识别">暂停画面</button></div></div><div id="videos" class="video-grid"></div></section>
 <aside>
