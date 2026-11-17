@@ -15,8 +15,8 @@
   <div class="dialog-head"><h2 id="sources-title">视频来源</h2><button data-close aria-label="关闭视频来源">关闭</button></div>
   <p class="muted">上传 MP4 或选择预设的 RTSP 来源。两路识别默认开启，可在主页分别启停。</p>
   <div id="source-limits" class="source-limits" hidden>
-    <p><strong>所有账号共享 <span data-limit="storage_mb"></span> MB 视频存储。</strong></p>
-    <p>上传可使用服务器剩余空间。所有账号共享 <span data-limit="active_sources"></span> 路同时识别名额。</p>
+    <p><strong>视频上传使用服务器实际剩余的磁盘空间。</strong></p>
+    <p>所有账号共享 <span data-limit="active_sources"></span> 路同时识别名额。</p>
   </div>
   <div id="source-settings" class="source-settings"></div>
 </dialog>
@@ -27,7 +27,7 @@
     <section>
       <h3>视频和识别</h3>
       <ul>
-        <li>上传 MP4 使用所有账号共享的 <strong><span data-limit="storage_mb"></span> MB 视频存储</strong>，可上传的大小取决于剩余空间。清除当前来源后，已上传文件和历史告警仍会保留。</li>
+        <li>上传 MP4 使用服务器实际剩余的磁盘空间。清除当前来源后，已上传文件和历史告警仍会保留。</li>
         <li>所有账号合计最多同时识别 <strong><span data-limit="active_sources"></span> 路</strong>。一路画面超过 <span data-limit="idle_minutes"></span> 分钟没有页面读取时，系统会自动停止该路识别。</li>
         <li>上传的 MP4 会循环播放。RTSP 可选择管理员预设的来源。</li>
       </ul>
@@ -88,4 +88,4 @@
 </dialog>
 <dialog id="service-dialog" aria-labelledby="service-title"><div class="dialog-head"><h2 id="service-title">服务连接</h2><button data-close aria-label="关闭服务连接">关闭</button></div><p class="muted small">当前后端在本地电脑运行，测试时需保持开机联网。</p><label>后端 HTTPS 地址<input id="api-url" placeholder="留空使用当前网站后端" autocomplete="off"></label><button id="connect" class="primary full">连接服务</button><button id="reset-connection" class="text-button full">恢复默认连接</button><p class="muted small">更换服务会退出当前账号。请仅连接可信地址。</p></dialog>
 <dialog id="auth" aria-labelledby="auth-title"><form id="auth-form"><div class="dialog-head"><h2 id="auth-title">登录工作台</h2><button type="button" id="close-auth" aria-label="关闭登录">关闭</button></div><label>邮箱<input id="email" type="email" required autocomplete="username" maxlength="254"></label><label>密码<input id="password" type="password" required minlength="12" maxlength="128" autocomplete="current-password" placeholder="至少 12 位"></label><p id="auth-error" class="error" role="alert"></p><button class="primary full" id="auth-submit">登录</button><button type="button" id="switch-auth" class="text-button full">还没有账号？注册</button></form></dialog>
-<div id="toast" role="status" hidden></div><script src="./motion.js?v=20261117-controls"></script><script src="./app.js?v=20261117-storage"></script></body></html>
+<div id="toast" role="status" hidden></div><script src="./motion.js?v=20261117-controls"></script><script src="./app.js?v=20261117-disk"></script></body></html>
