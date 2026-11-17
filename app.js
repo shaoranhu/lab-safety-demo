@@ -5,6 +5,7 @@ let api='',token='',email='',types=[],events=[],tab='final',mode='login',lastSho
 let savedSources={},recognitionEnabled={},viewsPaused=false,defaultApi='';
 let updates;
 let framePeriod=200,livePeriod=0;
+let resumeSavedSources=false;
 const previewErrors={}, motions={}, localMedia={}, liveFrames={}, sourceChanges={}, statusPeriod=1500;
 const activeStates=['online','connecting'];
 const stateLabels={offline:'未连接',connecting:'正在读取',online:'在线',error:'错误',stopping:'正在停止',stopped:'已停止',disconnected:'连接中断'};
@@ -89,7 +90,7 @@ function drawCards(){
     card.innerHTML=`<div class="video-head"><strong>${names[source]} · ${result?'识别结果':'原始视频'}</strong>${result?'':`<div class="video-actions">
       <button id="recognition-${source}" class="secondary" disabled>开始识别</button>
       <button class="configure-source" aria-label="设置${names[source]}来源">设置来源</button>
-    </div>`}</div><div class="screen"><div class="placeholder">${result?'等待识别画面':'请设置视频来源'}</div>
+    </div>`}</div><div class="screen"><div class="placeholder" id="placeholder-${id}">${result?'等待识别画面':'请设置视频来源'}</div>
       <img id="image-${id}" hidden alt="${names[source]}${result?'识别结果':'原始画面'}">
       <canvas id="motion-${id}" aria-label="${names[source]}${result?'识别结果':'原始画面'}" hidden></canvas>
     </div><div class="frame-bar"><span id="stamp-${id}">尚无画面</span></div>`;
@@ -154,6 +155,12 @@ function renderSourceControls(source){
   const rtspName=Array.from(select.options).find(option=>option.value===saved?.rtsp_id)?.text;
   const current=saved?.rtsp_id?'RTSP · '+(rtspName||saved.rtsp_id):saved?'已上传 MP4 视频':'未设置';
   text($('#source-current-'+source),'当前来源 · '+current);
+  for(const id of [source,source+'-result']){
+    const placeholder=saved
+      ? (running||busy?'正在等待视频画面':'已保存来源，点击「开始识别」')
+      : (id===source?'请设置视频来源':'等待识别画面');
+    text($('#placeholder-'+id),placeholder);
+  }
 }
 function sourceNotice(source,message,kind='info'){
   const notice=$('#notice-'+source);
@@ -185,7 +192,13 @@ async function changeSource(source,pending,change){
     states[source]={...(reset?{}:states[source]),state:state.state,error:''};
     metrics();
     eventList();
-    notify(state.error||message,state.error?'error':'success');
+    if(state.error||message){
+      let notice=state.error||message;
+      if(!state.error&&reset&&state.source){
+        notice+=state.enabled?'，正在读取画面':'。识别已停止，可在主页点击「开始识别」。';
+      }
+      notify(notice,state.error?'error':'success');
+    }
   }catch(error){
     if(token===session) notify(error.message,'error');
   }finally{
@@ -218,6 +231,13 @@ function toggleRecognition(source){
     }
     return {state:await post(path,{}),message:'正在启动识别'};
   });
+}
+function restoreSource(source){
+  if(resumeSavedSources&&savedSources[source]&&recognitionEnabled[source]!==false){
+    return changeSource(source,'正在恢复已保存的来源…',async path=>({
+      state:await post(path,{resume:true})
+    }));
+  }
 }
 function metrics(){
   const body=$('#metrics');
@@ -380,6 +400,7 @@ async function updateFrames(source,signal){
         renderSourceControls(source);
         if(state.error&&$('#sources-dialog').open) sourceNotice(source,state.error,'error');
       }
+      if(state.state==='offline'&&previous?.stream_id) restoreSource(source);
       if(!updateMotion(source,state)){
         if(state.preview) await displayLiveFrame(source,state,isCurrent);
         else if(!live||!activeStates.includes(state.state)||!liveFrames[source]) displayFrame(source,state.packet);
@@ -458,12 +479,14 @@ async function loadAccount(){
     span.append(small);label.append(input,span);box.append(label);
   }
   authState();startUpdates();
+  for(const source of sources) restoreSource(source);
 }
 async function health(){
   try{
     const health=await json('/api/health');
     framePeriod=health.process_fps?Math.max(84,Math.min(200,1000/health.process_fps)):200;
     livePeriod=health.rtsp_preview_fps?1000/health.rtsp_preview_fps:0;
+    resumeSavedSources=health.resume_saved_sources===true;
     $('#parameters').dataset.baseline=String(health.baseline_parameters!==false);
     text($('#connection'),'后端可连接');text($('#banner'),'');
     if(token)await loadAccount();
