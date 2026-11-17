@@ -35,8 +35,6 @@
 .test-parameters{margin-top:14px;color:var(--muted)}
 .test-parameters summary{cursor:pointer;color:var(--accent)}
 .test-parameters fieldset{margin-top:8px}
-.source-limits{margin:12px 0;padding:3px 12px;border:1px solid #43576b;border-radius:7px;background:#1b2937;color:#e5eef7;font-size:13px}
-.source-limits p{margin:6px 0}
 .usage-rules section+section{border-top:1px solid var(--edge);padding-top:14px}
 .usage-rules ul{margin:6px 0 14px;padding-left:20px;font-size:13px;line-height:1.55}
 .usage-rules li+li{margin-top:6px}

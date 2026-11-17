@@ -108,7 +108,7 @@ function drawCards(){
     controls.innerHTML=`<h3>${names[source]}</h3>
       <p class="current-source" id="source-current-${source}">当前未设置来源</p>
       <p class="source-notice" id="notice-${source}" role="status"></p>
-      <label>MP4 视频<input id="file-${source}" type="file" accept="video/mp4,.mp4" aria-describedby="source-limits"></label>
+      <label>MP4 视频<input id="file-${source}" type="file" accept="video/mp4,.mp4"></label>
       <div class="button-row"><button id="upload-${source}" class="primary">上传视频</button>
       <button id="clear-${source}" class="secondary">清除当前来源</button></div>
       <label>RTSP 视频源<select id="rtsp-${source}"><option value="">尚未配置</option></select></label>
@@ -480,7 +480,7 @@ async function loadAccount(){
   for(const source of sources) restoreSource(source);
 }
 function showUsageLimits(limits){
-  $('#usage-rules').hidden=$('#source-limits').hidden=!limits;
+  $('#usage-rules').hidden=!limits;
   $('#usage-status').hidden=Boolean(limits);
   if(!limits)return;
   const values={...limits,events_per_tab:eventsPerTab};
