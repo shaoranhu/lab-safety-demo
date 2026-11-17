@@ -159,7 +159,7 @@ class FileMotionPreview {
     }
   }
 
-  close() {
+  close(preserve = false) {
     this.abort.abort();
     this.ready = false;
     if (this.callback !== undefined) {
@@ -171,6 +171,7 @@ class FileMotionPreview {
     this.video.load();
     this.video.remove();
     if (this.url) URL.revokeObjectURL(this.url);
+    if (preserve) return;
     for (const {canvas,still} of this.surfaces) {
       canvas.hidden = true;
       if (still.getAttribute('src')) still.hidden = false;

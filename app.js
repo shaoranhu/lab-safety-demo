@@ -2,11 +2,14 @@
 const $=s=>document.querySelector(s), sources=['monitor','robot'];
 const names={monitor:'监控摄像头',robot:'机器人'}, states={};
 let api='',token='',email='',types=[],events=[],tab='final',mode='login',lastShot='',shotURL='';
-let savedSources={},paused={},defaultApi='';
+let savedSources={},recognitionEnabled={},viewsPaused=false,defaultApi='';
 let updates;
-let framePeriod=200;
-const previewErrors={}, motions={}, localMedia={}, statusPeriod=1500;
+let framePeriod=200,livePeriod=0;
+const previewErrors={}, motions={}, localMedia={}, liveFrames={}, sourceChanges={}, statusPeriod=1500;
+const activeStates=['online','connecting'];
+const stateLabels={offline:'未连接',connecting:'正在读取',online:'在线',error:'错误',stopping:'正在停止',stopped:'已停止',disconnected:'连接中断'};
 const parameterDefaults={confidence:.4,crowd_count:3,region_percent:50,lying_ratio:1.25,hold_seconds:1,alert_interval:3};
+const behaviorKeys=['leaving_seconds','access_count','unattended_seconds','experiment_count'];
 const requestedCatalog=[["ppe", "安全防护服异常"], ["fall", "人员摔倒"], ["eating", "实验室饮食"], ["sleeping", "实验室睡觉"], ["unattended_equipment", "仪器开启但无人看管"], ["leaving", "实验过程中外出"], ["open_container", "试剂瓶瓶口敞开"], ["understaffed", "独自实验／人数不足"], ["waste_disposal", "废液直接倒入下水道"], ["unreturned_reagent", "试剂用完未归位"], ["equipment_left_on", "实验结束后设备未关闭"], ["spill", "打翻实验用品／液体洒落"], ["outside_protection", "防护设施外进行危险操作"], ["access", "准入异常"]];
 for(const [id,name] of requestedCatalog){const label=document.createElement('label');label.className='check';const input=document.createElement('input');input.type='checkbox';input.value=id;input.disabled=true;const span=document.createElement('span');span.textContent=name;const small=document.createElement('small');small.textContent='待接入';span.append(small);label.append(input,span);$('#requested-types').append(label)}
 function markAvailableTypes(){
@@ -21,8 +24,38 @@ function toast(message){const dialog=document.querySelector('dialog[open]');if(d
 function openDialog(id){const dialog=document.getElementById(id);dialog.querySelector('.toast-inline')?.remove();dialog.showModal()}
 document.querySelectorAll('[data-open]').forEach(button=>button.onclick=()=>openDialog(button.dataset.open));
 document.querySelectorAll('[data-close]').forEach(button=>button.onclick=()=>button.closest('dialog').close());
-function authState(){text($('#account'),token?'退出 '+email:'注册 / 登录');$('#account').title=token?'退出 '+email:'注册 / 登录';$('#save-types').disabled=!token;$('#parameters').disabled=!token||$('#parameters').dataset.baseline==='false';$('#download').disabled=!token;document.querySelectorAll('.source-controls button,.source-controls input,.source-controls select,#types input,#requested-types input').forEach(x=>x.disabled=!token);}
-function clearWorkspace(){updates?.abort();for(const key of sources){closeMotion(key);delete localMedia[key];delete states[key];delete previewErrors[key]}events=[];savedSources={};lastShot='';if(shotURL)URL.revokeObjectURL(shotURL);shotURL='';for(const img of document.querySelectorAll('.screen img')){img.hidden=true;img.removeAttribute('src');delete img.dataset.frame;delete img.dataset.time}for(const stamp of document.querySelectorAll('.frame-bar span'))text(stamp,'尚无画面');text($('#snapshot'),'暂无异常');text($('#snapshot-detail'),'');text($('#types'),'等待登录');types=[];markAvailableTypes();metrics();eventList()}
+function authState(){
+  text($('#account'),token?'退出 '+email:'注册 / 登录');
+  $('#account').title=$('#account').textContent;
+  $('#save-types').disabled=$('#behavior-parameters').disabled=$('#download').disabled=!token;
+  $('#parameters').disabled=!token||$('#parameters').dataset.baseline==='false';
+  document.querySelectorAll('#types input,#requested-types input').forEach(x=>x.disabled=!token);
+  for(const source of sources) renderSourceControls(source);
+  $('#toggle-views').disabled=!token;
+}
+function clearWorkspace(){
+  updates?.abort();
+  viewsPaused=false;
+  text($('#toggle-views'),'暂停画面');
+  $('#toggle-views').setAttribute('aria-pressed','false');
+  for(const source of sources){
+    resetPreview(source);
+    delete localMedia[source];
+    delete states[source];
+    delete previewErrors[source];
+    delete sourceChanges[source];
+    $('#file-'+source).value='';
+    sourceNotice(source,'');
+  }
+  events=[];savedSources={};recognitionEnabled={};lastShot='';
+  if(shotURL)URL.revokeObjectURL(shotURL);
+  shotURL='';
+  text($('#snapshot'),'暂无异常截图');
+  text($('#snapshot-detail'),'');
+  text($('#types'),'等待登录');
+  types=[];
+  markAvailableTypes();metrics();eventList();
+}
 async function request(path,{timeout=15000,signal,headers,...options}={}){
   const session=token;
   const deadline=AbortSignal.timeout(timeout);
@@ -47,20 +80,174 @@ async function request(path,{timeout=15000,signal,headers,...options}={}){
 }
 async function json(path,options){return (await request(path,options)).json();}
 const post=(path,body)=>json(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-function drawCards(){for(const result of [false,true])for(const source of sources){const id=source+(result?'-result':'');const card=document.createElement('article');card.className='video';card.innerHTML=`<div class="video-head"><strong>${names[source]} · ${result?'识别结果':'原始视频'}</strong>${result?'':`<button class="configure-source" aria-label="设置${names[source]}来源">设置来源</button>`}</div><div class="screen"><div class="placeholder">${result?'等待识别画面':'设置视频来源开始测试'}</div><img id="image-${id}" hidden alt="${names[source]}${result?'识别结果':'原始画面'}"><canvas id="motion-${id}" aria-label="${names[source]}" hidden></canvas></div><div class="frame-bar"><span id="stamp-${id}">尚无画面</span><button class="text-button" id="pause-${id}">暂停画面</button></div>`;$('#videos').append(card);if(!result)card.querySelector('.configure-source').onclick=()=>{openDialog('sources-dialog');$('#file-'+source).focus()};$('#pause-'+id).onclick=()=>{paused[id]=!paused[id];text($('#pause-'+id),paused[id]?'继续画面':'暂停画面');toast(paused[id]?'已暂停此窗口显示，后台识别继续':'此窗口已恢复显示')}}
-for(const source of sources){const controls=document.createElement('section');controls.className='source-controls';controls.innerHTML=`<h3>${names[source]}</h3><label>MP4 视频（最大 100 MB）<input id="file-${source}" type="file" accept="video/mp4,video/*"></label><div class="button-row"><button id="start-${source}" class="primary">上传并识别</button><button id="resume-${source}" class="secondary">恢复上次来源</button><button id="stop-${source}" class="secondary">停止识别</button></div><label>RTSP 测试流<select id="rtsp-${source}"><option value="">尚未配置</option></select></label><button id="rtsp-start-${source}" class="secondary full">连接 RTSP</button>`;$('#source-settings').append(controls)}
-for(const source of sources){$('#start-'+source).onclick=()=>start(source);$('#resume-'+source).onclick=()=>resume(source);$('#rtsp-start-'+source).onclick=()=>startRTSP(source);$('#stop-'+source).onclick=async()=>{try{await request('/api/source/'+source,{method:'DELETE'});toast('已请求停止')}catch(e){toast(e.message)}}}}
-async function resume(source){try{let value=savedSources[source];if(typeof value==='string')value={video_id:value};if(!value?.video_id&&!value?.rtsp_id)throw Error('还没有保存的视频来源');await post('/api/source/'+source,value);toast('已恢复保存的视频来源')}catch(e){toast(e.message)}}
-async function startRTSP(source){try{const id=$('#rtsp-'+source).value;if(!id)throw Error('管理员尚未配置可用 RTSP 流');await post('/api/source/'+source,{rtsp_id:id});savedSources[source]={rtsp_id:id};toast('正在连接 RTSP 测试流')}catch(e){toast(e.message)}}
-async function start(source){const file=$('#file-'+source).files[0];if(!file){toast('请先选择视频');return}if(file.size>100*1024*1024){toast('视频不能超过 100 MB');return}const button=$('#start-'+source);button.disabled=true;text(button,'上传中…');try{const upload=await json('/api/upload',{method:'POST',body:file,headers:{'Content-Type':'application/octet-stream'},timeout:120000});localMedia[source]={id:upload.id,file};savedSources[source]={video_id:upload.id};await post('/api/source/'+source,savedSources[source]);toast('已启动识别，请等待模型加载')}catch(e){toast(e.message)}finally{button.disabled=!token;text(button,'上传并识别')}}
-function metrics(){const body=$('#metrics');body.replaceChildren();text($('#source-summary'),sources.filter(s=>states[s]?.state==='online').length+' / 2 路运行中');for(const source of sources){const state=states[source]||{},p=state.packet||{};const label={offline:'未连接',connecting:'正在读取',online:'在线',error:'错误',stopped:'已停止',disconnected:'连接中断'}[state.state]||'未连接';const tr=document.createElement('tr');for(const value of [names[source],label,p.people??'—',p.resolution||'—',state.state==='online'?(p.fps??'—'):'—',p.process_ms?`${p.process_ms} ms`:'—',p.frame_id??'—']){const td=document.createElement('td');td.textContent=value;tr.append(td)}if(state.error)tr.title=state.error;body.append(tr)}}
+const put=(path,body)=>json(path,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+function drawCards(){
+  for(const result of [false,true]) for(const source of sources){
+    const id=source+(result?'-result':'');
+    const card=document.createElement('article');
+    card.className='video';
+    card.innerHTML=`<div class="video-head"><strong>${names[source]} · ${result?'识别结果':'原始视频'}</strong>${result?'':`<div class="video-actions">
+      <button id="recognition-${source}" class="secondary" disabled>开始识别</button>
+      <button class="configure-source" aria-label="设置${names[source]}来源">设置来源</button>
+    </div>`}</div><div class="screen"><div class="placeholder">${result?'等待识别画面':'请设置视频来源'}</div>
+      <img id="image-${id}" hidden alt="${names[source]}${result?'识别结果':'原始画面'}">
+      <canvas id="motion-${id}" aria-label="${names[source]}${result?'识别结果':'原始画面'}" hidden></canvas>
+    </div><div class="frame-bar"><span id="stamp-${id}">尚无画面</span></div>`;
+    $('#videos').append(card);
+    if(!result) card.querySelector('.configure-source').onclick=()=>{
+      openDialog('sources-dialog');
+      $('#file-'+source).focus();
+    };
+  }
+  for(const source of sources){
+    const controls=document.createElement('section');
+    controls.className='source-controls';
+    controls.innerHTML=`<h3>${names[source]}</h3>
+      <p class="current-source" id="source-current-${source}">当前未设置来源</p>
+      <p class="source-notice" id="notice-${source}" role="status"></p>
+      <label>MP4 视频（最大 100 MB）<input id="file-${source}" type="file" accept="video/mp4,.mp4"></label>
+      <div class="button-row"><button id="upload-${source}" class="primary">上传视频</button>
+      <button id="clear-${source}" class="secondary">清除当前来源</button></div>
+      <label>RTSP 视频源<select id="rtsp-${source}"><option value="">尚未配置</option></select></label>
+      <button id="rtsp-save-${source}" class="secondary full">设为 RTSP 来源</button>`;
+    $('#source-settings').append(controls);
+    $('#upload-'+source).onclick=()=>uploadVideo(source);
+    $('#file-'+source).onchange=()=>{
+      sourceNotice(source,'');
+      renderSourceControls(source);
+    };
+    $('#rtsp-save-'+source).onclick=()=>{
+      const id=$('#rtsp-'+source).value;
+      changeSource(source,'正在保存 RTSP 来源…',async()=>({
+        state:await put('/api/source/'+source,{rtsp_id:id}),
+        message:'已保存 RTSP 来源',reset:true
+      }));
+    };
+    $('#rtsp-'+source).onchange=()=>renderSourceControls(source);
+    $('#clear-'+source).onclick=()=>changeSource(source,'正在清除来源…',async()=>({
+      state:await put('/api/source/'+source,{}),message:'已清除当前来源和画面',reset:true
+    }));
+    $('#recognition-'+source).onclick=()=>toggleRecognition(source);
+  }
+}
+$('#toggle-views').onclick=()=>{
+  viewsPaused=!viewsPaused;
+  text($('#toggle-views'),viewsPaused?'继续画面':'暂停画面');
+  $('#toggle-views').setAttribute('aria-pressed',String(viewsPaused));
+  toast(viewsPaused?'四路画面已暂停，后台继续识别':'四路画面已继续');
+};
+function renderSourceControls(source){
+  const saved=savedSources[source];
+  const state=states[source]?.state;
+  const busy=sourceChanges[source]?.busy;
+  const running=activeStates.includes(state);
+  const message=busy?'处理中…':state==='stopping'?'正在停止…':running?'停止识别':'开始识别';
+  const button=$('#recognition-'+source), select=$('#rtsp-'+source), file=$('#file-'+source);
+  text(button,message);
+  button.setAttribute('aria-label',message+'（'+names[source]+'）');
+  button.disabled=!token||busy||state==='stopping'||(!saved&&!running);
+  button.classList.toggle('recognition-running',running);
+  file.disabled=select.disabled=!token||busy;
+  $('#upload-'+source).disabled=file.disabled||!file.files.length;
+  $('#clear-'+source).disabled=file.disabled||!saved;
+  $('#rtsp-save-'+source).disabled=select.disabled||!select.value;
+  const rtspName=Array.from(select.options).find(option=>option.value===saved?.rtsp_id)?.text;
+  const current=saved?.rtsp_id?'RTSP · '+(rtspName||saved.rtsp_id):saved?'已上传 MP4 视频':'未设置';
+  text($('#source-current-'+source),'当前来源 · '+current);
+}
+function sourceNotice(source,message,kind='info'){
+  const notice=$('#notice-'+source);
+  notice.dataset.kind=kind;
+  text(notice,message);
+}
+async function changeSource(source,pending,change){
+  if(sourceChanges[source]?.busy) return;
+  const session=token, path='/api/source/'+source;
+  const action={busy:true};
+  sourceChanges[source]=action;
+  renderSourceControls(source);
+  const inSettings=$('#sources-dialog').open;
+  const notify=(message,kind)=>inSettings&&$('#sources-dialog').open
+    ? sourceNotice(source,message,kind) : toast(names[source]+' · '+message);
+  if(inSettings) sourceNotice(source,pending);
+  try{
+    const {state,message,reset,media}=await change(path,session);
+    if(token!==session||!state) return;
+    if(reset){
+      resetPreview(source);
+      if(media) localMedia[source]=media;
+      else delete localMedia[source];
+      $('#file-'+source).value='';
+    }
+    savedSources[source]=state.source;
+    recognitionEnabled[source]=state.enabled;
+    delete previewErrors[source];
+    states[source]={...(reset?{}:states[source]),state:state.state,error:''};
+    metrics();
+    eventList();
+    notify(state.error||message,state.error?'error':'success');
+  }catch(error){
+    if(token===session) notify(error.message,'error');
+  }finally{
+    if(sourceChanges[source]===action){
+      action.busy=false;
+      renderSourceControls(source);
+    }
+  }
+}
+function uploadVideo(source){
+  const file=$('#file-'+source).files[0];
+  if(!file) return;
+  if(file.size>100*1024*1024){
+    sourceNotice(source,'视频不能超过 100 MB','error');
+    return;
+  }
+  return changeSource(source,'正在上传视频…',async(path,session)=>{
+    const {id}=await json('/api/upload',{method:'POST',body:file,headers:{'Content-Type':'application/octet-stream'},timeout:120000});
+    if(session!==token) return {};
+    const state=await put(path,{video_id:id});
+    return {state,message:'视频上传完成，已设为当前来源',reset:true,media:{id,file}};
+  });
+}
+function toggleRecognition(source){
+  const running=activeStates.includes(states[source]?.state);
+  return changeSource(source,'',async path=>{
+    if(running){
+      const state=await json(path,{method:'DELETE'});
+      return {state,message:state.state==='stopping'?'正在停止识别':'识别已停止'};
+    }
+    return {state:await post(path,{}),message:'正在启动识别'};
+  });
+}
+function metrics(){
+  const body=$('#metrics');
+  body.replaceChildren();
+  const online=sources.filter(source=>states[source]?.state==='online').length;
+  text($('#source-summary'),online+' / 2 路运行中');
+  for(const source of sources){
+    const state=states[source]||{};
+    const packet=state.packet||{};
+    const disabled=state.state==='offline'&&savedSources[source]&&recognitionEnabled[source]===false;
+    const label=disabled?'已停止':stateLabels[state.state]||'未连接';
+    const fps=state.state==='online'?packet.fps:null;
+    const cost=packet.process_ms?`${packet.process_ms} ms`:'—';
+    const row=document.createElement('tr');
+    for(const value of [names[source],label,packet.people??'—',packet.resolution||'—',fps??'—',cost,packet.frame_id??'—']){
+      const cell=document.createElement('td');
+      cell.textContent=value;
+      row.append(cell);
+    }
+    if(state.error) row.title=state.error;
+    body.append(row);
+  }
+}
 function eventList(){
-  const box=$('#events');box.replaceChildren();$('#fusion-note').hidden=tab!=='final';text($('#event-count'),events.length?'最近 '+events.length+' 条':'暂无记录');
+  const box=$('#events');box.replaceChildren();$('#fusion-note').hidden=tab!=='final';
   const current=sources.filter(s=>tab==='final'||s===tab).filter(s=>states[s]?.packet);
   for(const source of current){
     const state=states[source],p=state.packet,row=document.createElement('div');row.className='current-result';
     const title=document.createElement('strong');
-    title.textContent=names[source]+(state.state==='online'?' · 当前 ':' · 最后一帧 ')+p.people+' 人 · '+(p.findings.length?'检测到实验规则异常':'未触发所选异常规则');
+    title.textContent=names[source]+(state.state==='online'?' · 当前 ':' · 最后一帧 ')+p.people+' 人 · '+(p.findings.length?'命中已启用的检测项':'未命中已启用的检测项');
     const detail=document.createElement('p');
     detail.textContent=new Date(p.time).toLocaleString()+' · 帧 '+p.frame_id+' · '+(p.findings.map(f=>f.pose).join(' / ')||'姿态尚未分类');
     const description=document.createElement('p');description.textContent=p.description||'等待行为描述';
@@ -81,9 +268,8 @@ function eventList(){
 }
 async function snapshot(signal){if(!events.length||events[0].id===lastShot)return;const e=events[0];const response=await request('/api/snapshot/'+e.id,{signal});const blob=await response.blob();if(signal.aborted)return;if(shotURL)URL.revokeObjectURL(shotURL);shotURL=URL.createObjectURL(blob);const image=new Image();image.alt='最近一次异常截图';image.src=shotURL;$('#snapshot').replaceChildren(image);text($('#snapshot-detail'),new Date(e.time).toLocaleString()+' · '+names[e.source]+' · 帧 '+e.frame_id+' · '+e.findings.map(f=>(types.find(t=>t.id===f.type)?.name||f.type)+' · 检测分数 '+Math.round(f.confidence*100)+'%').join(' / '));lastShot=e.id;}
 function displayFrame(source,packet){
-  if(!packet?.raw)return;
+  if(viewsPaused||!packet?.raw)return;
   for(const [id,jpeg] of [[source,packet.raw],[source+'-result',packet.result]]){
-    if(paused[id])continue;
     const image=$('#image-'+id);
     // The timestamp distinguishes a replacement video that starts at the same frame number.
     if(image.dataset.frame===String(packet.frame_id)&&image.dataset.time===packet.time)continue;
@@ -91,25 +277,41 @@ function displayFrame(source,packet){
     image.dataset.frame=packet.frame_id;
     image.dataset.time=packet.time;
     image.hidden=false;
+    $('#motion-'+id).hidden=true;
     text($('#stamp-'+id),'帧 '+packet.frame_id+' · '+new Date(packet.time).toLocaleTimeString());
   }
 }
-function closeMotion(source){
-  motions[source]?.close();
+function closeMotion(source,preserve=false){
+  motions[source]?.close(preserve);
   delete motions[source];
+}
+function resetPreview(source){
+  closeMotion(source);
+  delete liveFrames[source];
+  for(const id of [source,source+'-result']){
+    const image=$('#image-'+id), canvas=$('#motion-'+id);
+    image.hidden=canvas.hidden=true;
+    image.removeAttribute('src');
+    delete image.dataset.frame;
+    delete image.dataset.time;
+    delete canvas.dataset.time;
+    delete canvas.dataset.detectionFrame;
+    canvas.width=0;
+    text($('#stamp-'+id),'尚无画面');
+  }
 }
 function updateMotion(source,state){
   let current=motions[source];
-  if(!state.playback||!['online','connecting'].includes(state.state)){
-    closeMotion(source);
+  if(!state.playback||!activeStates.includes(state.state)){
+    closeMotion(source,viewsPaused);
     return false;
   }
   if(current?.playback.stream_id!==state.playback.stream_id){
-    closeMotion(source);
+    closeMotion(source,viewsPaused);
     const playback=state.playback;
-    const motion=new FileMotionPreview(source,playback,id=>paused[id],()=>{
+    const motion=new FileMotionPreview(source,playback,()=>viewsPaused,()=>{
       if(motions[source]!==motion||motion.abort.signal.aborted)return;
-      motion.close();
+      motion.close(viewsPaused);
     });
     motions[source]=motion;
     current=motion;
@@ -122,25 +324,74 @@ function updateMotion(source,state){
   if(!current.abort.signal.aborted)current.addPacket(state.packet);
   return current.ready;
 }
+async function displayLiveFrame(source,state,isCurrent){
+  if(viewsPaused||!state.preview) return;
+  const {frame_id,captured_at,raw}=state.preview;
+  const bytes=Uint8Array.fromBase64?Uint8Array.fromBase64(raw):Uint8Array.from(atob(raw),char=>char.charCodeAt(0));
+  const bitmap=await createImageBitmap(new Blob([bytes],{type:'image/jpeg'}));
+  try{
+    if(viewsPaused||!isCurrent()) return;
+    const age=captured_at-state.packet?.captured_at;
+    const packet=age>=0&&age<=.45?state.packet:null;
+    for(const [index,id] of [source,source+'-result'].entries()){
+      const canvas=$('#motion-'+id), still=$('#image-'+id);
+      const {width,height}=bitmap;
+      if(canvas.width!==width||canvas.height!==height){
+        canvas.width=width;canvas.height=height;
+      }
+      const ctx=canvas.getContext('2d',{alpha:false});
+      ctx.drawImage(bitmap,0,0);
+      if(index) drawRecognition(ctx,packet,width,height);
+      canvas.dataset.time=String(frame_id);
+      if(index) canvas.dataset.detectionFrame=packet?.frame_id??'';
+      text($('#stamp-'+id),index?(packet?'识别帧 '+packet.frame_id:'等待识别结果'):'实时帧 '+frame_id);
+      canvas.hidden=false;
+      still.hidden=true;
+    }
+    liveFrames[source]=state.stream_id+'/'+frame_id;
+  }finally{
+    bitmap.close();
+  }
+}
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 async function updateFrames(source,signal){
   while(token&&!signal.aborted){
     const started=performance.now();
+    const action=sourceChanges[source];
+    if(action?.busy){await wait(100);continue}
+    const isCurrent=()=>!signal.aborted&&sourceChanges[source]===action&&!action?.busy;
+    const live=Boolean(livePeriod&&savedSources[source]?.rtsp_id);
     try{
       const motion=motions[source];
-      const query=motion?.ready?'?metadata='+encodeURIComponent(motion.playback.stream_id):'';
-      const state=await json('/api/frame/'+source+query,{signal,timeout:4500});
-      if(signal.aborted)return;
+      const query=new URLSearchParams();
+      const headers={};
+      if(motion?.ready) query.set('metadata',motion.playback.stream_id);
+      if(live){
+        query.set('live','1');
+        if(viewsPaused) query.set('preview','0');
+        else headers['X-Lab-Preview-After']=liveFrames[source]||'';
+      }
+      const state=await json('/api/frame/'+source+'?'+query,{signal,headers,timeout:4500});
+      if(!isCurrent())continue;
+      const previous=states[source];
       states[source]=state;
       delete previewErrors[source];
-      if(!updateMotion(source,state))displayFrame(source,state.packet);
+      if(state.state!==previous?.state){
+        renderSourceControls(source);
+        if(state.error&&$('#sources-dialog').open) sourceNotice(source,state.error,'error');
+      }
+      if(!updateMotion(source,state)){
+        if(state.preview) await displayLiveFrame(source,state,isCurrent);
+        else if(!live||!activeStates.includes(state.state)||!liveFrames[source]) displayFrame(source,state.packet);
+      }
     }catch(error){
-      if(signal.aborted)return;
+      if(!isCurrent())continue;
       states[source]={...states[source],state:'disconnected',error:''};
       previewErrors[source]=error.message;
+      renderSourceControls(source);
     }
-    const active=!document.hidden&&['online','connecting'].includes(states[source]?.state);
-    const interval=active?framePeriod:statusPeriod;
+    const active=!document.hidden&&activeStates.includes(states[source]?.state);
+    const interval=active?(live&&!viewsPaused?livePeriod:framePeriod):statusPeriod;
     // Keep one request in flight per source. Slow connections skip frames instead of queuing them.
     await wait(active?Math.max(0,interval-(performance.now()-started)):interval);
   }
@@ -174,9 +425,71 @@ function startUpdates(){
   for(const source of sources)updateFrames(source,signal);
   updateStatus(signal);
 }
-async function loadAccount(){types=await json('/api/abnormal-types');markAvailableTypes();const config=await json('/api/settings');for(const [key,value] of Object.entries({...parameterDefaults,...config.parameters}))if($('#param-'+key))$('#param-'+key).value=value;document.querySelectorAll('#requested-types input').forEach(x=>x.checked=(config.requested_types||[]).includes(x.value));savedSources=config.sources;const streams=await json('/api/rtsp-sources');for(const source of sources){const select=$('#rtsp-'+source);select.replaceChildren();if(!streams.length)select.add(new Option('管理员尚未配置',''));for(const stream of streams)select.add(new Option(stream.name,stream.id));select.value=savedSources[source]?.rtsp_id||streams.find(s=>s.id===source+'-demo')?.id||streams[0]?.id||''}const box=$('#types');box.replaceChildren();for(const type of types){const label=document.createElement('label');label.className='check';const input=document.createElement('input');input.type='checkbox';input.value=type.id;input.checked=config.enabled.includes(type.id);const span=document.createElement('span');span.textContent=type.name;const small=document.createElement('small');small.textContent=type.description;span.append(small);label.append(input,span);box.append(label)}authState();startUpdates();}
-async function health(){try{const health=await json('/api/health');framePeriod=health.process_fps?Math.max(84,Math.min(200,1000/health.process_fps)):200;$('#parameters').dataset.baseline=String(health.baseline_parameters!==false);text($('#connection'),'后端可连接');text($('#banner'),'');if(token)await loadAccount()}catch{authState();text($('#connection'),'后端未连接');text($('#banner'),'当前识别服务未连接，旧画面可能已停止更新。网页仍可浏览；请稍后点击“恢复默认连接”重试。')}}
-$('#settings-form').onsubmit=async e=>{e.preventDefault();try{await json('/api/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:[...document.querySelectorAll('#types input:checked')].map(x=>x.value),requested_types:[...document.querySelectorAll('#requested-types input:checked')].map(x=>x.value),parameters:Object.fromEntries(Object.keys(parameterDefaults).map(key=>[key,Number($('#param-'+key).value)]))})});toast('已保存：清单勾选为接入计划，已接入测试规则在后续推理中生效')}catch(e){toast(e.message)}};
+async function loadAccount(){
+  types=await json('/api/abnormal-types');
+  markAvailableTypes();
+  const config=await json('/api/settings');
+  for(const [key,value] of Object.entries(parameterDefaults)) $('#param-'+key).value=config.parameters?.[key]??value;
+  for(const key of behaviorKeys) $('#behavior-'+key).value=config.behavior_parameters?.[key]??'';
+  document.querySelectorAll('#requested-types input').forEach(x=>x.checked=(config.requested_types||[]).includes(x.value));
+  savedSources=config.sources;
+  recognitionEnabled=config.recognition_enabled||{};
+  const streams=await json('/api/rtsp-sources');
+  for(const source of sources){
+    const select=$('#rtsp-'+source);
+    select.replaceChildren();
+    if(!streams.length)select.add(new Option('管理员尚未配置',''));
+    for(const stream of streams)select.add(new Option(stream.name,stream.id));
+    select.value=[savedSources[source]?.rtsp_id,source+'-demo',streams[0]?.id].find(id=>streams.some(stream=>stream.id===id))||'';
+  }
+  const box=$('#types');
+  box.replaceChildren();
+  for(const type of types){
+    const label=document.createElement('label');
+    label.className='check';
+    const input=document.createElement('input');
+    input.type='checkbox';
+    input.value=type.id;
+    input.checked=config.enabled.includes(type.id);
+    const span=document.createElement('span');
+    span.textContent=type.name;
+    const small=document.createElement('small');
+    small.textContent=type.description;
+    span.append(small);label.append(input,span);box.append(label);
+  }
+  authState();startUpdates();
+}
+async function health(){
+  try{
+    const health=await json('/api/health');
+    framePeriod=health.process_fps?Math.max(84,Math.min(200,1000/health.process_fps)):200;
+    livePeriod=health.rtsp_preview_fps?1000/health.rtsp_preview_fps:0;
+    $('#parameters').dataset.baseline=String(health.baseline_parameters!==false);
+    text($('#connection'),'后端可连接');text($('#banner'),'');
+    if(token)await loadAccount();
+  }catch{
+    authState();text($('#connection'),'后端未连接');
+    text($('#banner'),'当前识别服务未连接，旧画面可能已停止更新。网页仍可浏览；请稍后点击“恢复默认连接”重试。');
+  }
+}
+$('#settings-form').onsubmit=async e=>{
+  e.preventDefault();
+  try{
+    const config={
+      enabled:[...document.querySelectorAll('#types input:checked')].map(x=>x.value),
+      requested_types:[...document.querySelectorAll('#requested-types input:checked')].map(x=>x.value),
+      behavior_parameters:Object.fromEntries(behaviorKeys.map(key=>{
+        const input=$('#behavior-'+key);
+        return [key,input.value===''?null:input.valueAsNumber];
+      }))
+    };
+    if(!$('#parameters').disabled){
+      config.parameters=Object.fromEntries(Object.keys(parameterDefaults).map(key=>[key,Number($('#param-'+key).value)]));
+    }
+    await put('/api/settings',config);
+    toast('检测配置已保存');
+  }catch(error){toast(error.message)}
+};
 const logRanges=[
   {date:$('#start'),hour:$('#start-hour'),minute:$('#start-minute'),label:'开始时间',lastMinute:false},
   {date:$('#end'),hour:$('#end-hour'),minute:$('#end-minute'),label:'结束时间',lastMinute:true}
