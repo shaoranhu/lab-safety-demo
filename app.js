@@ -13,12 +13,30 @@ const stateLabels={offline:'未连接',connecting:'正在读取',online:'在线'
 const parameterDefaults={confidence:.4,crowd_count:3,region_percent:50,lying_ratio:1.25,hold_seconds:1,alert_interval:3};
 const behaviorKeys=['leaving_seconds','access_count','unattended_seconds','experiment_count'];
 const requestedCatalog=[["ppe", "安全防护服异常"], ["fall", "人员摔倒"], ["eating", "实验室饮食"], ["sleeping", "实验室睡觉"], ["unattended_equipment", "仪器开启但无人看管"], ["leaving", "实验过程中外出"], ["open_container", "试剂瓶瓶口敞开"], ["understaffed", "独自实验／人数不足"], ["waste_disposal", "废液直接倒入下水道"], ["unreturned_reagent", "试剂用完未归位"], ["equipment_left_on", "实验结束后设备未关闭"], ["spill", "打翻实验用品／液体洒落"], ["outside_protection", "防护设施外进行危险操作"], ["access", "准入异常"]];
-for(const [id,name] of requestedCatalog){const label=document.createElement('label');label.className='check';const input=document.createElement('input');input.type='checkbox';input.value=id;input.disabled=true;const span=document.createElement('span');span.textContent=name;const small=document.createElement('small');small.textContent='待接入';span.append(small);label.append(input,span);$('#requested-types').append(label)}
+for(const [id,name] of requestedCatalog){const label=document.createElement('label');label.className='check';const input=document.createElement('input');input.type='checkbox';input.value=id;input.disabled=true;const span=document.createElement('span');span.textContent=name;label.append(input,span);$('#requested-types').append(label)}
 function markAvailableTypes(){
   document.querySelectorAll('#requested-types .check').forEach(item=>{
     const active=types.some(type=>type.id===item.querySelector('input').value);
-    item.querySelector('small').textContent=active?'已接入':'待接入';
+    const badge=item.querySelector('small');
+    if(active&&!badge){
+      const status=document.createElement('small');
+      status.textContent='已接入';
+      item.querySelector('span').append(status);
+    }else if(!active&&badge){
+      badge.remove();
+    }
   });
+}
+function findingLabel(finding){
+  const name=types.find(type=>type.id===finding.type)?.name||finding.type;
+  return typeof finding.confidence==='number'
+    ? name+' · 检测分数 '+Math.round(finding.confidence*100)+'%'
+    : name;
+}
+function postureSummary(postures){
+  const counts=new Map();
+  for(const posture of postures||[]) counts.set(posture,(counts.get(posture)||0)+1);
+  return [...counts].map(([posture,count])=>posture+' '+count+' 人').join('、');
 }
 const normalBanner='';
 const text=(el,value)=>{el.textContent=value;if(el.id==="banner")el.hidden=!value;};
@@ -267,7 +285,8 @@ function eventList(){
     const title=document.createElement('strong');
     title.textContent=names[source]+(state.state==='online'?' · 当前 ':' · 最后一帧 ')+p.people+' 人 · '+(p.findings.length?'命中已启用的检测项':'未命中已启用的检测项');
     const detail=document.createElement('p');
-    detail.textContent=new Date(p.time).toLocaleString()+' · 帧 '+p.frame_id+' · '+(p.findings.map(f=>f.pose).join(' / ')||'姿态尚未分类');
+    const postures=postureSummary(p.postures);
+    detail.textContent=new Date(p.time).toLocaleString()+' · 帧 '+p.frame_id+(postures?' · '+postures:'');
     const description=document.createElement('p');description.textContent=p.description||'等待行为描述';
     row.append(title,detail,description);box.append(row);
   }
@@ -280,11 +299,11 @@ function eventList(){
     const detail=document.createElement('small');detail.textContent=new Date(event.time).toLocaleString()+' · 帧 '+event.frame_id;
     const description=document.createElement('small');description.textContent=event.description||event.findings.map(f=>f.pose||'未分类').join(' / ');
     left.append(detail,description);
-    right.textContent=event.findings.map(f=>(types.find(t=>t.id===f.type)?.name||f.type)+' · 检测分数 '+Math.round(f.confidence*100)+'%').join(' / ');
+    right.textContent=event.findings.map(findingLabel).join(' / ');
     row.append(left,right);box.append(row);
   }
 }
-async function snapshot(signal){if(!events.length||events[0].id===lastShot)return;const e=events[0];const response=await request('/api/snapshot/'+e.id,{signal});const blob=await response.blob();if(signal.aborted)return;if(shotURL)URL.revokeObjectURL(shotURL);shotURL=URL.createObjectURL(blob);const image=new Image();image.alt='最近一次异常截图';image.src=shotURL;$('#snapshot').replaceChildren(image);text($('#snapshot-detail'),new Date(e.time).toLocaleString()+' · '+names[e.source]+' · 帧 '+e.frame_id+' · '+e.findings.map(f=>(types.find(t=>t.id===f.type)?.name||f.type)+' · 检测分数 '+Math.round(f.confidence*100)+'%').join(' / '));lastShot=e.id;}
+async function snapshot(signal){if(!events.length||events[0].id===lastShot)return;const e=events[0];const response=await request('/api/snapshot/'+e.id,{signal});const blob=await response.blob();if(signal.aborted)return;if(shotURL)URL.revokeObjectURL(shotURL);shotURL=URL.createObjectURL(blob);const image=new Image();image.alt='最近一次异常截图';image.src=shotURL;$('#snapshot').replaceChildren(image);text($('#snapshot-detail'),new Date(e.time).toLocaleString()+' · '+names[e.source]+' · 帧 '+e.frame_id+' · '+e.findings.map(findingLabel).join(' / '));lastShot=e.id;}
 function displayFrame(source,packet){
   if(viewsPaused||!packet?.raw)return;
   for(const [id,jpeg] of [[source,packet.raw],[source+'-result',packet.result]]){

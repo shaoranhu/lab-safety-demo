@@ -29,22 +29,28 @@ function drawRecognition(ctx, packet, width, height) {
       ctx.fill();
     }
   }
-  for (const [left,top,right,bottom,score] of packet.boxes || []) {
+  for (const [i,[left,top,right,bottom,score]] of (packet.boxes || []).entries()) {
     const x = left * width, y = top * height;
     ctx.strokeStyle = '#5da9ff';
     ctx.strokeRect(x, y, (right - left) * width, (bottom - top) * height);
-    const label = '人员 ' + Math.round(score * 100) + '%';
+    const posture = packet.postures?.[i];
+    const label = (posture && posture !== '姿态不确定' ? posture : '人员') + ' ' + Math.round(score * 100) + '%';
+    const labelWidth = ctx.measureText(label).width + 9;
+    const labelLeft = Math.min(x, Math.max(0, width - labelWidth));
     const labelTop = Math.max(0, y - 21);
     ctx.fillStyle = '#195696';
-    ctx.fillRect(x, labelTop, ctx.measureText(label).width + 9, 21);
+    ctx.fillRect(labelLeft, labelTop, labelWidth, 21);
     ctx.fillStyle = 'white';
-    ctx.fillText(label, x + 4, labelTop + 15);
+    ctx.fillText(label, labelLeft + 4, labelTop + 15);
   }
-  if (packet.findings.some(item => item.type === 'eating')) {
+  const action = packet.findings.find(item => item.type === 'fall') ||
+      packet.findings.find(item => item.type === 'eating');
+  if (action) {
+    const label = action.type === 'fall' || action.pose === '疑似饮用' ? action.pose : '疑似进食';
     ctx.fillStyle = '#272219';
     ctx.fillRect(8, 8, 91, 25);
     ctx.fillStyle = '#ffd76e';
-    ctx.fillText('疑似进食', 14, 26);
+    ctx.fillText(label, 14, 26);
   }
 }
 
