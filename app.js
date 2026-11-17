@@ -6,7 +6,6 @@ let savedSources={},recognitionEnabled={},viewsPaused=false,defaultApi='';
 let updates;
 let framePeriod=200,livePeriod=0;
 let resumeSavedSources=false;
-let serviceLimits=null;
 const eventsPerTab=15;
 const previewErrors={}, motions={}, localMedia={}, liveFrames={}, sourceChanges={}, statusPeriod=1500;
 const activeStates=['online','connecting'];
@@ -46,6 +45,7 @@ function clearWorkspace(){
     delete localMedia[source];
     delete states[source];
     delete previewErrors[source];
+    sourceChanges[source]?.controller.abort();
     delete sourceChanges[source];
     $('#file-'+source).value='';
     sourceNotice(source,'');
@@ -61,11 +61,11 @@ function clearWorkspace(){
 }
 async function request(path,{timeout=15000,signal,headers,...options}={}){
   const session=token;
-  const deadline=AbortSignal.timeout(timeout);
+  const deadline=timeout===null?null:AbortSignal.timeout(timeout);
   const response=await fetch(api+path,{
     ...options,
     headers:{...(session?{Authorization:'Bearer '+session}:{}),...headers},
-    signal:signal?AbortSignal.any([deadline,signal]):deadline
+    signal:signal&&deadline?AbortSignal.any([deadline,signal]):signal||deadline
   });
   if(!response.ok){
     let error;
@@ -172,7 +172,7 @@ function sourceNotice(source,message,kind='info'){
 async function changeSource(source,pending,change){
   if(sourceChanges[source]?.busy) return;
   const session=token, path='/api/source/'+source;
-  const action={busy:true};
+  const action={busy:true,controller:new AbortController()};
   sourceChanges[source]=action;
   renderSourceControls(source);
   const inSettings=$('#sources-dialog').open;
@@ -180,7 +180,7 @@ async function changeSource(source,pending,change){
     ? sourceNotice(source,message,kind) : toast(names[source]+' · '+message);
   if(inSettings) sourceNotice(source,pending);
   try{
-    const {state,message,reset,media}=await change(path,session);
+    const {state,message,reset,media}=await change(path,session,action.controller.signal);
     if(token!==session||!state) return;
     if(reset){
       resetPreview(source);
@@ -213,13 +213,8 @@ async function changeSource(source,pending,change){
 function uploadVideo(source){
   const file=$('#file-'+source).files[0];
   if(!file) return;
-  const maxMb=serviceLimits?.upload_mb;
-  if(Number.isFinite(maxMb)&&file.size>maxMb*1024*1024){
-    sourceNotice(source,'单个视频不能超过 '+maxMb+' MB','error');
-    return;
-  }
-  return changeSource(source,'正在上传视频…',async(path,session)=>{
-    const {id}=await json('/api/upload',{method:'POST',body:file,headers:{'Content-Type':'application/octet-stream'},timeout:120000});
+  return changeSource(source,'正在上传视频…',async(path,session,signal)=>{
+    const {id}=await json('/api/upload',{method:'POST',body:file,headers:{'Content-Type':'application/octet-stream'},signal,timeout:null});
     if(session!==token) return {};
     const state=await put(path,{video_id:id});
     return {state,message:'视频上传完成，已设为当前来源',reset:true,media:{id,file}};
@@ -341,7 +336,7 @@ function updateMotion(source,state){
     const cached=localMedia[source];
     const file=cached?.id===playback.video_id
       ? Promise.resolve(cached.file)
-      : request('/api/media/'+encodeURIComponent(playback.video_id),{signal:motion.abort.signal,timeout:120000}).then(response=>response.blob());
+      : request('/api/media/'+encodeURIComponent(playback.video_id),{signal:motion.abort.signal,timeout:null}).then(response=>response.blob());
     file.then(data=>motion.open(data)).catch(()=>motion.onFailure());
   }
   if(!current.abort.signal.aborted)current.addPacket(state.packet);
@@ -485,11 +480,10 @@ async function loadAccount(){
   for(const source of sources) restoreSource(source);
 }
 function showUsageLimits(limits){
-  serviceLimits=limits||null;
-  $('#usage-rules').hidden=$('#source-limits').hidden=!serviceLimits;
-  $('#usage-status').hidden=Boolean(serviceLimits);
-  if(!serviceLimits)return;
-  const values={...serviceLimits,events_per_tab:eventsPerTab};
+  $('#usage-rules').hidden=$('#source-limits').hidden=!limits;
+  $('#usage-status').hidden=Boolean(limits);
+  if(!limits)return;
+  const values={...limits,events_per_tab:eventsPerTab};
   document.querySelectorAll('[data-limit]').forEach(element=>{
     text(element,values[element.dataset.limit]??'—');
   });
