@@ -12,21 +12,6 @@ const activeStates=['online','connecting'];
 const stateLabels={offline:'未连接',connecting:'正在读取',online:'在线',error:'错误',stopping:'正在停止',stopped:'已停止',disconnected:'连接中断'};
 const parameterDefaults={confidence:.4,crowd_count:3,region_percent:50,lying_ratio:1.25,hold_seconds:1,alert_interval:3};
 const behaviorKeys=['leaving_seconds','access_count','unattended_seconds','experiment_count'];
-const requestedCatalog=[["ppe", "安全防护服异常"], ["fall", "人员摔倒"], ["eating", "实验室饮食"], ["sleeping", "实验室睡觉"], ["unattended_equipment", "仪器开启但无人看管"], ["leaving", "实验过程中外出"], ["open_container", "试剂瓶瓶口敞开"], ["understaffed", "独自实验／人数不足"], ["waste_disposal", "废液直接倒入下水道"], ["unreturned_reagent", "试剂用完未归位"], ["equipment_left_on", "实验结束后设备未关闭"], ["spill", "打翻实验用品／液体洒落"], ["outside_protection", "防护设施外进行危险操作"], ["access", "准入异常"]];
-for(const [id,name] of requestedCatalog){const label=document.createElement('label');label.className='check';const input=document.createElement('input');input.type='checkbox';input.value=id;input.disabled=true;const span=document.createElement('span');span.textContent=name;label.append(input,span);$('#requested-types').append(label)}
-function markAvailableTypes(){
-  document.querySelectorAll('#requested-types .check').forEach(item=>{
-    const active=types.some(type=>type.id===item.querySelector('input').value);
-    const badge=item.querySelector('small');
-    if(active&&!badge){
-      const status=document.createElement('small');
-      status.textContent='已接入';
-      item.querySelector('span').append(status);
-    }else if(!active&&badge){
-      badge.remove();
-    }
-  });
-}
 function findingLabel(finding){
   const name=types.find(type=>type.id===finding.type)?.name||finding.type;
   return typeof finding.confidence==='number'
@@ -49,7 +34,7 @@ function authState(){
   $('#account').title=$('#account').textContent;
   $('#save-types').disabled=$('#behavior-parameters').disabled=$('#download').disabled=!token;
   $('#parameters').disabled=!token||$('#parameters').dataset.baseline==='false';
-  document.querySelectorAll('#types input,#requested-types input').forEach(x=>x.disabled=!token);
+  document.querySelectorAll('#types input').forEach(x=>x.disabled=!token);
   for(const source of sources) renderSourceControls(source);
   $('#toggle-views').disabled=!token;
 }
@@ -75,7 +60,7 @@ function clearWorkspace(){
   text($('#snapshot-detail'),'');
   text($('#types'),'等待登录');
   types=[];
-  markAvailableTypes();metrics();eventList();
+  metrics();eventList();
 }
 async function request(path,{timeout=15000,signal,headers,...options}={}){
   const session=token;
@@ -465,11 +450,9 @@ function startUpdates(){
 }
 async function loadAccount(){
   types=await json('/api/abnormal-types');
-  markAvailableTypes();
   const config=await json('/api/settings');
   for(const [key,value] of Object.entries(parameterDefaults)) $('#param-'+key).value=config.parameters?.[key]??value;
   for(const key of behaviorKeys) $('#behavior-'+key).value=config.behavior_parameters?.[key]??'';
-  document.querySelectorAll('#requested-types input').forEach(x=>x.checked=(config.requested_types||[]).includes(x.value));
   savedSources=config.sources;
   recognitionEnabled=config.recognition_enabled||{};
   const streams=await json('/api/rtsp-sources');
@@ -528,7 +511,6 @@ $('#settings-form').onsubmit=async e=>{
   try{
     const config={
       enabled:[...document.querySelectorAll('#types input:checked')].map(x=>x.value),
-      requested_types:[...document.querySelectorAll('#requested-types input:checked')].map(x=>x.value),
       behavior_parameters:Object.fromEntries(behaviorKeys.map(key=>{
         const input=$('#behavior-'+key);
         return [key,input.value===''?null:input.valueAsNumber];

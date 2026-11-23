@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="zh-CN">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>实验室人员异常行为识别</title><link rel="stylesheet" href="./style.css?v=20261117-accounts"></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>实验室人员异常行为识别</title><link rel="stylesheet" href="./style.css?v=20261123-catalog"></head>
 <body>
 <header><a class="brand" href="./">实验室人员异常行为识别</a><nav aria-label="工作台操作"><span id="connection" role="status">正在检查服务</span><button class="secondary" data-open="sources-dialog">视频来源</button><button class="secondary" data-open="settings-dialog">检测设置</button><button class="secondary" data-open="logs-dialog">日志导出</button><button class="secondary" data-open="usage-dialog" hidden>使用说明</button><button class="secondary" data-open="service-dialog">服务连接</button><button id="account" class="primary">注册 / 登录</button></nav></header>
 <main><div id="banner" role="status" class="banner" hidden></div><div class="dashboard">
@@ -53,7 +53,24 @@
 <label>仪器开启但无人看管限时（秒）<input id="behavior-unattended_seconds" type="number" min="0" step="1"></label>
 <label>实验人数要求（人）<input id="behavior-experiment_count" type="number" min="1" step="1"></label>
 </div><p class="muted small">留空表示未设置。启用对应检测项后，按每路画面判断人数超限、人数不足和连续无人。</p></fieldset>
-<h3>异常行为清单（14 项）</h3><p class="muted small">勾选要接入的检测项。当前运行的类别在下方设置。</p><div id="requested-types" class="requested-grid"></div><h3 class="test-heading">已接入的检测项</h3><div id="types" class="muted">登录后设置检测类别</div>
+<h3>异常行为清单（14 项）</h3>
+<ul id="requested-types" class="requested-grid">
+  <li>安全防护服异常</li>
+  <li>人员摔倒</li>
+  <li>实验室饮食</li>
+  <li>实验室睡觉</li>
+  <li>仪器开启但无人看管</li>
+  <li>实验过程中外出</li>
+  <li>试剂瓶瓶口敞开</li>
+  <li>独自实验／人数不足</li>
+  <li>废液直接倒入下水道</li>
+  <li>试剂用完未归位</li>
+  <li>实验结束后设备未关闭</li>
+  <li>打翻实验用品／液体洒落</li>
+  <li>防护设施外进行危险操作</li>
+  <li>准入异常</li>
+</ul>
+<h3 class="test-heading">已接入的检测项</h3><p class="muted small">在此勾选需要运行的检测项，再保存检测配置。</p><div id="types" class="muted">登录后设置检测类别</div>
 <details class="test-parameters"><summary>联调规则参数</summary><fieldset id="parameters" disabled aria-label="联调规则参数"><div class="parameter-grid">
 <label>检测器置信度阈值<input id="param-confidence" type="number" min="0.1" max="0.95" step="0.05" value="0.4" required></label>
 <label>聚集人数阈值（人）<input id="param-crowd_count" type="number" min="2" max="20" step="1" value="3" required></label>
@@ -84,4 +101,4 @@
 </dialog>
 <dialog id="service-dialog" aria-labelledby="service-title"><div class="dialog-head"><h2 id="service-title">服务连接</h2><button data-close aria-label="关闭服务连接">关闭</button></div><p class="muted small">当前后端在本地电脑运行，测试时需保持开机联网。</p><label>后端 HTTPS 地址<input id="api-url" placeholder="留空使用当前网站后端" autocomplete="off"></label><button id="connect" class="primary full">连接服务</button><button id="reset-connection" class="text-button full">恢复默认连接</button><p class="muted small">更换服务会退出当前账号。请仅连接可信地址。</p></dialog>
 <dialog id="auth" aria-labelledby="auth-title"><form id="auth-form"><div class="dialog-head"><h2 id="auth-title">登录工作台</h2><button type="button" id="close-auth" aria-label="关闭登录">关闭</button></div><label>邮箱<input id="email" type="email" required autocomplete="username" maxlength="254"></label><label>密码<input id="password" type="password" required minlength="12" maxlength="128" autocomplete="current-password" placeholder="至少 12 位"></label><p id="auth-error" class="error" role="alert"></p><button class="primary full" id="auth-submit">登录</button><button type="button" id="switch-auth" class="text-button full">还没有账号？注册</button></form></dialog>
-<div id="toast" role="status" hidden></div><script src="./motion.js?v=20261117-behavior"></script><script src="./app.js?v=20261117-behavior"></script></body></html>
+<div id="toast" role="status" hidden></div><script src="./motion.js?v=20261117-behavior"></script><script src="./app.js?v=20261123-catalog"></script></body></html>
