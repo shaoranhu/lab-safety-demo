@@ -503,6 +503,7 @@ function showUsageLimits(limits){
   });
 }
 async function health(){
+  $('#account').disabled=true;
   showUsageLimits(null);
   try{
     const health=await json('/api/health');
@@ -517,12 +518,14 @@ async function health(){
   }catch{
     authState();text($('#connection'),'后端未连接');
     text($('#banner'),'当前识别服务未连接，旧画面可能已停止更新。网页仍可浏览；请稍后点击“恢复默认连接”重试。');
+    $('#account').disabled=false;
     return;
   }
   if(token){
     try{await loadAccount()}
     catch(error){if(token)text($('#banner'),error.message)}
   }
+  $('#account').disabled=false;
 }
 $('#settings-form').onsubmit=async e=>{
   e.preventDefault();
@@ -649,4 +652,4 @@ $('#auth-form').onsubmit=async event=>{
 $('#connect').onclick=async()=>{try{const value=$('#api-url').value.trim().replace(/\/$/,'');if(value){const u=new URL(value);if(u.protocol!=='https:' && !(u.protocol==='http:'&&['localhost','127.0.0.1'].includes(u.hostname)))throw Error('请输入 HTTPS 服务地址');if(u.username||u.password||u.search||u.hash||u.pathname!=='/')throw Error('请只填写服务域名地址')}if(token&&value!==api){try{await request('/api/logout',{method:'POST'})}catch{}token='';email='';sessionStorage.removeItem('lab-session');clearWorkspace()}api=value;if(api===defaultApi)localStorage.removeItem('lab-api');else localStorage.setItem('lab-api',api);authState();await health()}catch(e){toast(e.message)}};
 $('#reset-connection').onclick=async()=>{localStorage.removeItem('lab-api');sessionStorage.removeItem('lab-session');location.reload()};
 document.querySelectorAll('[data-tab]').forEach(button=>button.onclick=()=>{tab=button.dataset.tab;document.querySelectorAll('[data-tab]').forEach(x=>{x.classList.toggle('selected',x===button);x.setAttribute('aria-selected',String(x===button))});eventList()});
-async function boot(){drawCards();metrics();renderAuthForm();try{const config=await fetch('./config.json',{cache:'no-store'}).then(r=>r.ok?r.json():{});defaultApi=config.apiBase||'';api=localStorage.getItem('lab-api')??defaultApi;const saved=JSON.parse(sessionStorage.getItem('lab-session')||'null');if(saved&&saved.api===api){token=saved.token;email=saved.email}}catch{}$('#api-url').value=api;authState();await health()}boot();
+async function boot(){$('#account').disabled=true;drawCards();metrics();renderAuthForm();try{const config=await fetch('./config.json',{cache:'no-store'}).then(r=>r.ok?r.json():{});defaultApi=config.apiBase||'';api=localStorage.getItem('lab-api')??defaultApi;const saved=JSON.parse(sessionStorage.getItem('lab-session')||'null');if(saved&&saved.api===api){token=saved.token;email=saved.email}}catch{}$('#api-url').value=api;authState();await health()}boot();
