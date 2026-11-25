@@ -5,7 +5,7 @@ let api='',token='',email='',types=[],events=[],tab='final',mode='login',lastSho
 let savedSources={},recognitionEnabled={},viewsPaused=false,defaultApi='';
 let updates;
 let framePeriod=200,livePeriod=0;
-let resumeSavedSources=false;
+let resumeSavedSources=false,accountLogin=true;
 const eventsPerTab=15;
 const previewErrors={}, motions={}, localMedia={}, liveFrames={}, sourceChanges={}, statusPeriod=1500;
 const activeStates=['online','connecting'];
@@ -30,13 +30,25 @@ function openDialog(id){const dialog=document.getElementById(id);dialog.querySel
 document.querySelectorAll('[data-open]').forEach(button=>button.onclick=()=>openDialog(button.dataset.open));
 document.querySelectorAll('[data-close]').forEach(button=>button.onclick=()=>button.closest('dialog').close());
 function authState(){
-  text($('#account'),token?'退出 '+email:'注册 / 登录');
+  text($('#account'),token?'退出 '+email:(accountLogin?'登录':'注册 / 登录'));
   $('#account').title=$('#account').textContent;
   $('#save-types').disabled=$('#behavior-parameters').disabled=$('#download').disabled=!token;
   $('#parameters').disabled=!token||$('#parameters').dataset.baseline==='false';
   document.querySelectorAll('#types input').forEach(x=>x.disabled=!token);
   for(const source of sources) renderSourceControls(source);
   $('#toggle-views').disabled=!token;
+}
+function renderAuthForm(){
+  if(accountLogin) mode='login';
+  const login=mode==='login';
+  text($('#auth-title'),login?'登录工作台':'创建实验账号');
+  text($('#auth-submit'),login?'登录':'注册并登录');
+  text($('#switch-auth'),login?'还没有账号？注册':'已有账号？登录');
+  $('#switch-auth').hidden=accountLogin;
+  text($('#account-label'),accountLogin?'账号':'邮箱');
+  $('#email').type=accountLogin?'text':'email';
+  $('#password').autocomplete=login?'current-password':'new-password';
+  authState();
 }
 function clearWorkspace(){
   updates?.abort();
@@ -494,6 +506,8 @@ async function health(){
   showUsageLimits(null);
   try{
     const health=await json('/api/health');
+    accountLogin=health.account_login===true;
+    renderAuthForm();
     framePeriod=health.process_fps?Math.max(84,Math.min(200,1000/health.process_fps)):200;
     livePeriod=health.rtsp_preview_fps?1000/health.rtsp_preview_fps:0;
     resumeSavedSources=health.resume_saved_sources===true;
@@ -600,9 +614,35 @@ $('#download').onclick=async()=>{
   }catch(e){toast(e.message)}
 };
 $('#account').onclick=async()=>{if(token){updates?.abort();try{await request('/api/logout',{method:'POST'})}catch{}token='';sessionStorage.removeItem('lab-session');location.reload()}else $('#auth').showModal()};
-$('#close-auth').onclick=()=>$('#auth').close();$('#switch-auth').onclick=()=>{mode=mode==='login'?'register':'login';text($('#auth-title'),mode==='login'?'登录工作台':'创建实验账号');text($('#auth-submit'),mode==='login'?'登录':'注册并登录');text($('#switch-auth'),mode==='login'?'还没有账号？注册':'已有账号？登录');$('#password').autocomplete=mode==='login'?'current-password':'new-password';text($('#auth-error'),'')};
-$('#auth-form').onsubmit=async e=>{e.preventDefault();$('#auth-submit').disabled=true;text($('#auth-error'),'');try{const result=await post('/api/'+mode,{email:$('#email').value,password:$('#password').value});token=result.token;email=result.email;sessionStorage.setItem('lab-session',JSON.stringify({api,token,email}));$('#password').value='';await loadAccount();$('#auth').close();toast('已登录')}catch(e){text($('#auth-error'),e.message)}finally{$('#auth-submit').disabled=false}};
+$('#close-auth').onclick=()=>$('#auth').close();
+$('#switch-auth').onclick=()=>{
+  mode=mode==='login'?'register':'login';
+  renderAuthForm();
+  text($('#auth-error'),'');
+};
+$('#auth-form').onsubmit=async event=>{
+  event.preventDefault();
+  $('#auth-submit').disabled=true;
+  text($('#auth-error'),'');
+  try{
+    const result=await post('/api/'+mode,{
+      [accountLogin?'account':'email']:$('#email').value,
+      password:$('#password').value,
+    });
+    token=result.token;
+    email=result.account??result.email;
+    sessionStorage.setItem('lab-session',JSON.stringify({api,token,email}));
+    $('#password').value='';
+    await loadAccount();
+    $('#auth').close();
+    toast('已登录');
+  }catch(error){
+    text($('#auth-error'),error.message);
+  }finally{
+    $('#auth-submit').disabled=false;
+  }
+};
 $('#connect').onclick=async()=>{try{const value=$('#api-url').value.trim().replace(/\/$/,'');if(value){const u=new URL(value);if(u.protocol!=='https:' && !(u.protocol==='http:'&&['localhost','127.0.0.1'].includes(u.hostname)))throw Error('请输入 HTTPS 服务地址');if(u.username||u.password||u.search||u.hash||u.pathname!=='/')throw Error('请只填写服务域名地址')}if(token&&value!==api){try{await request('/api/logout',{method:'POST'})}catch{}token='';email='';sessionStorage.removeItem('lab-session');clearWorkspace()}api=value;if(api===defaultApi)localStorage.removeItem('lab-api');else localStorage.setItem('lab-api',api);authState();await health()}catch(e){toast(e.message)}};
 $('#reset-connection').onclick=async()=>{localStorage.removeItem('lab-api');sessionStorage.removeItem('lab-session');location.reload()};
 document.querySelectorAll('[data-tab]').forEach(button=>button.onclick=()=>{tab=button.dataset.tab;document.querySelectorAll('[data-tab]').forEach(x=>{x.classList.toggle('selected',x===button);x.setAttribute('aria-selected',String(x===button))});eventList()});
-async function boot(){drawCards();metrics();try{const config=await fetch('./config.json',{cache:'no-store'}).then(r=>r.ok?r.json():{});defaultApi=config.apiBase||'';api=localStorage.getItem('lab-api')??defaultApi;const saved=JSON.parse(sessionStorage.getItem('lab-session')||'null');if(saved&&saved.api===api){token=saved.token;email=saved.email}}catch{}$('#api-url').value=api;authState();await health()}boot();
+async function boot(){drawCards();metrics();renderAuthForm();try{const config=await fetch('./config.json',{cache:'no-store'}).then(r=>r.ok?r.json():{});defaultApi=config.apiBase||'';api=localStorage.getItem('lab-api')??defaultApi;const saved=JSON.parse(sessionStorage.getItem('lab-session')||'null');if(saved&&saved.api===api){token=saved.token;email=saved.email}}catch{}$('#api-url').value=api;authState();await health()}boot();
