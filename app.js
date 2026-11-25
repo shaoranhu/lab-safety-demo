@@ -514,10 +514,14 @@ async function health(){
     showUsageLimits(health.limits);
     $('#parameters').dataset.baseline=String(health.baseline_parameters!==false);
     text($('#connection'),'后端可连接');text($('#banner'),'');
-    if(token)await loadAccount();
   }catch{
     authState();text($('#connection'),'后端未连接');
     text($('#banner'),'当前识别服务未连接，旧画面可能已停止更新。网页仍可浏览；请稍后点击“恢复默认连接”重试。');
+    return;
+  }
+  if(token){
+    try{await loadAccount()}
+    catch(error){if(token)text($('#banner'),error.message)}
   }
 }
 $('#settings-form').onsubmit=async e=>{
